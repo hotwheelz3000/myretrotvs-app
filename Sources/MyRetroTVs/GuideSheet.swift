@@ -204,34 +204,28 @@ struct CategoryChip: View {
     }
 }
 
-/// The clip title under the TV, scrolling when it doesn't fit.
+/// The clip title under the TV, scrolling when it doesn't fit. (The Guide button opens the guide.)
 struct NowPlayingStrip: View {
     let controller: TVController
-    let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 10) {
-                if !controller.nowCategory.isEmpty {
-                    CategoryChip(text: controller.nowCategory, color: controller.decade.glow)
-                } else {
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(controller.decade.glow)
-                }
-                Marquee(text: controller.nowTitle.isEmpty ? "Tap for the guide" : controller.nowTitle)
-                    .frame(height: 20)
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.dim)
+        HStack(spacing: 10) {
+            if !controller.nowCategory.isEmpty {
+                CategoryChip(text: controller.nowCategory, color: controller.decade.glow)
+            } else {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(controller.decade.glow)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 36)
-            .background(Capsule(style: .continuous).fill(Theme.panel))
-            .overlay(Capsule(style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
+            Marquee(text: controller.nowTitle.isEmpty ? "Press power to start" : controller.nowTitle)
+                .frame(height: 20)
         }
-        .buttonStyle(PressableStyle(scale: 0.98))
-        .accessibilityLabel("Now playing: \(controller.nowTitle). Open guide")
+        .padding(.horizontal, 14)
+        .frame(height: 36)
+        .background(Capsule(style: .continuous).fill(Theme.panel))
+        .overlay(Capsule(style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(controller.nowTitle.isEmpty ? "Nothing playing" : "Now playing: \(controller.nowTitle)")
     }
 }
 

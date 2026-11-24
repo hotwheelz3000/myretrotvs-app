@@ -34,12 +34,14 @@ struct AboutView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("GESTURES")
+                    Text("TIPS")
                         .font(Theme.label(12, weight: .heavy))
                         .tracking(1.2)
                         .foregroundStyle(Theme.amber)
-                    gesture("arrow.up.arrow.down", "Swipe up or down on the TV to change channels (in Focus mode)")
+                    gesture("arrow.up.arrow.down", "Swipe up or down on the TV to change channels (in Focus or Full)")
                     gesture("arrow.left.arrow.right", "Swipe left or right to change decades")
+                    gesture("list.bullet.rectangle", "Guide (or tap the LED): what's on, years and channel picks")
+                    gesture("arrow.up.left.and.arrow.down.right", "Full: video fills the screen; tap the picture for the remote")
                     gesture("rotate.right", "Turn your phone sideways for a full-screen TV")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

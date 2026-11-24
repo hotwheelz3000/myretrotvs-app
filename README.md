@@ -7,13 +7,14 @@ An unofficial iPhone app for [MyRetroTVs](https://www.myretrotvs.com), the free 
 ## What the app adds
 
 - **Living-room home screen:** seven drawn TV sets, one per decade, plus a "Back to the 80s" card for the last set you watched.
-- **Native remote:** Power, CH and VOL rockers (VOL changes the iPhone volume, since iOS blocks web video volume), Guide, Full, Shuffle, Focus, an LED readout, and a decade dial. Every press has a haptic click.
+- **Native remote:** Power, Guide, CH and VOL rockers (VOL changes the iPhone volume, since iOS blocks web video volume), Full, Shuffle, Focus, Effects, an LED readout, and a decade dial. Every press has a haptic click.
 - **Full screen:** the Full button stretches the video over the whole screen; tap the picture for a floating remote.
-- **Guide:** what's playing now (title and channel), every year of the decade to jump to, and the site's content categories (Cartoons, Commercials, Music...) as switches. The clip title also scrolls under the TV.
+- **Guide:** what's playing now (title and channel), every year of the decade to jump to, and the site's content categories (Cartoons, Commercials, Music...) as switches. The clip title also scrolls under the TV. Tap Guide or the LED to open it.
 - **Gestures:** swipe up/down on the TV to change channels (in Focus mode), and left/right to change decades.
 - **Picture & Sound panel:** noise, glow, static, full-screen, playlist, shuffle and sound effects, plus black & white and room color on the 70s set.
 - **Landscape:** turn the phone for a full-screen TV, with a pop-up remote.
 - **Focus mode:** each set opens in the site's Immersive Mode, so you see just the TV. This can be turned off in Picture & Sound.
+- **Playlist mode** that really moves on when a clip ends, and the clip picks up again after you pull down Notification Center.
 - Switch-on flash, static while a channel tunes, a no-signal screen with retry, sound that plays with the silent switch on, and a screen that stays awake while the TV is on.
 
 The remote works by pressing the site's own keyboard shortcuts for you; the guide reads the page and uses the site's own year bar and filters. The TV's status messages show as banners.

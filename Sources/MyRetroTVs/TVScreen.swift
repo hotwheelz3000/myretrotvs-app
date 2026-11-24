@@ -41,7 +41,7 @@ struct TVScreen: View {
                     .shadow(color: controller.decade.glow.opacity(chromeHidden ? 0 : 0.3), radius: 24)
                     .padding(.horizontal, chromeHidden ? 0 : 10)
                 if !chromeHidden {
-                    NowPlayingStrip(controller: controller) { showGuide = true }
+                    NowPlayingStrip(controller: controller)
                         .padding(.horizontal, 14)
                     RemoteControl(
                         controller: controller,

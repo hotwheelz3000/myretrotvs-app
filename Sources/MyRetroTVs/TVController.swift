@@ -2,96 +2,65 @@ import Observation
 import SwiftUI
 import WebKit
 
-/// The site's keyboard shortcuts, which the remote and gestures press.
-enum RemoteKey: String {
-    case power = " "
-    case channelUp = "ArrowUp"
-    case channelDown = "ArrowDown"
-    case volumeUp = "+"
-    case volumeDown = "-"
-    case menu = "h"
-    case mute = "m"
-    case noise = "n"
-    case glow = "g"
-    case blackAndWhite = "b"
-    case colorScheme = "c"
-    case staticTransition = "o"
-    case youtube = "y"
-    case fullScreen = "f"
-    case immersive = "i"
-    case playlist = "p"
-    case shuffle = "s"
-    case escape = "Escape"
-
-    /// What the remote's little LED display shows after a press.
-    var led: String {
-        switch self {
-        case .power: return "POWER"
-        case .channelUp: return "CH ▲"
-        case .channelDown: return "CH ▼"
-        case .volumeUp: return "VOL +"
-        case .volumeDown: return "VOL −"
-        case .menu: return "MENU"
-        case .mute: return "SFX"
-        case .noise: return "NOISE"
-        case .glow: return "GLOW"
-        case .blackAndWhite: return "B/W"
-        case .colorScheme: return "COLOR"
-        case .staticTransition: return "STATIC"
-        case .youtube: return "YOUTUBE"
-        case .fullScreen: return "FULL"
-        case .immersive: return "FOCUS"
-        case .playlist: return "PLAYLIST"
-        case .shuffle: return "SHUFFLE"
-        case .escape: return "EXIT"
-        }
-    }
-}
-
-/// A year on the site's year bar (2000...2009).
-struct GuideYear: Identifiable, Equatable {
-    let index: Int
-    let name: String
-    let selected: Bool
-    var id: Int { index }
-}
-
-/// One of the site's content filters ("Cartoons (4584)").
-struct GuideCategory: Identifiable, Equatable {
-    let code: String
-    let name: String
-    let count: Int
-    var checked: Bool
-    var id: String { code }
-}
-
 /// Owns the web view for the TV screen and everything the native controls do to it.
+///
+/// Sections (all in this file, so they can share private helpers):
+/// - Remote: button presses, decades, reload
+/// - Page: web view load events and messages from the page scripts
+/// - Guide: years and categories
+/// - Size and app switching: re-centering after a resize, resuming after Notification Center
+/// - Helpers: JavaScript calls, LED and banner
 @MainActor
 @Observable
 final class TVController {
     private(set) var decade: Decade
     var isLoading = true
     var hasError = false
-    /// Whether the site's Immersive Mode (just the TV) is on for the current page.
+
+    // Site modes for the current page. The site forgets them on every page load.
+    /// Immersive Mode (just the TV, page around it hidden).
     private(set) var isImmersive = false
-    /// Whether the site's full-screen video mode is on, which also hides the app's bars.
-    private(set) var isFullScreen = false
-    /// Whether the site's Shuffle Mode (random years on channel change) is on for this page.
+    /// Shuffle Mode (random years on channel change).
     private(set) var isShuffle = false
-    /// Whether the site's Playlist Mode (clips play start to end, then the next channel) is on.
+    /// Playlist Mode (clips play start to end, then the next channel).
     private(set) var isPlaylist = false
-    /// The small floating remote shown over a full-screen picture (tap the screen).
+
+    /// The app's own full screen (video stretched over the page, app bars hidden).
+    /// Unlike the site modes, it stays on across decades.
+    private(set) var isFullScreen = false
+    /// The small floating remote over a full-screen or landscape picture.
     var overlayRemote = false
+
+    // LED and banner.
+    private(set) var ledText: String
     /// Briefly true after each press, to show the LED over a full-screen picture.
     private(set) var toastVisible = false
-    /// The site's status line ("Tube glow effect is now enabled"), shown as a banner for a moment.
+    /// The site's status line ("Tube glow effect is now enabled"), shown for a moment.
     private(set) var banner: String?
+    /// Bumped on every decade change, so the screen replays its switch-on flash.
+    private(set) var tuneCount = 0
 
     // What's on, read from the page.
     private(set) var nowTitle = ""
+    /// "MUSIC - CH 9946". The site only shows it for a moment, so the last one is kept.
     private(set) var channelLabel = ""
     private(set) var years: [GuideYear] = []
     private(set) var categories: [GuideCategory] = []
+
+    @ObservationIgnored weak var webView: WKWebView?
+    @ObservationIgnored private var ledReset: Task<Void, Never>?
+    @ObservationIgnored private var bannerReset: Task<Void, Never>?
+    @ObservationIgnored private var immersiveTask: Task<Void, Never>?
+    @ObservationIgnored private var filterTask: Task<Void, Never>?
+    @ObservationIgnored private var relayoutTask: Task<Void, Never>?
+    /// Hides the "Immersive mode is now on" banner when the app turned it on by itself.
+    @ObservationIgnored private var quietImmersiveStatus = false
+    @ObservationIgnored private var isAway = false
+
+    init(decade: Decade) {
+        self.decade = decade
+        self.ledText = "CH \(decade.id)"
+    }
 
     /// "MUSIC" from "MUSIC - CH 9946".
     var nowCategory: String {
@@ -104,79 +73,36 @@ final class TVController {
         guard let range = channelLabel.range(of: #"CH\s*(\d+)"#, options: .regularExpression) else { return nil }
         return channelLabel[range].filter(\.isNumber)
     }
-    private(set) var ledText: String
-    /// Bumped on every decade change, so the screen replays its switch-on flash.
-    private(set) var tuneCount = 0
 
-    @ObservationIgnored weak var webView: WKWebView?
-    @ObservationIgnored private var ledReset: Task<Void, Never>?
-    @ObservationIgnored private var immersiveTask: Task<Void, Never>?
-    @ObservationIgnored private var bannerReset: Task<Void, Never>?
-    @ObservationIgnored private var applyFilters: Task<Void, Never>?
-    @ObservationIgnored private var quietImmersiveStatus = false
-    @ObservationIgnored private var relayoutTask: Task<Void, Never>?
-
-    init(decade: Decade) {
-        self.decade = decade
-        self.ledText = "CH \(decade.id)"
-    }
-
-    /// What the LED shows when nothing was just pressed.
-    private var idleLED: String {
-        if let number = channelNumber { return "CH \(number)" }
-        return "CH \(decade.id)"
-    }
-
-    var autoImmersive: Bool {
+    private var autoImmersive: Bool {
         UserDefaults.standard.object(forKey: "autoImmersive") as? Bool ?? true
     }
+}
 
+// MARK: - Remote
+
+extension TVController {
     func press(_ key: RemoteKey, haptic: Bool = true) {
         if haptic { Haptics.click() }
         switch key {
         case .volumeUp, .volumeDown:
-            // iOS ignores the site's volume control; change the phone's media volume.
+            // iOS ignores web video volume, so change the phone's media volume instead.
             let level = SystemVolume.shared.step(up: key == .volumeUp)
             flash(SystemVolume.meter(level))
-            return
+        case .fullScreen:
+            setFullScreen(!isFullScreen)
+        case .playlist:
+            setPlaylist(!isPlaylist)
         case .immersive:
             isImmersive.toggle()
-            webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
+            updateScrolling()
+            sendKey(key)
         case .shuffle:
             isShuffle.toggle()
-        case .playlist:
-            isPlaylist.toggle()
-            flash(key.led)
-            send(key.rawValue)
-            webView?.evaluateJavaScript("window.__retroPlaylist && window.__retroPlaylist(\(isPlaylist));", completionHandler: nil)
-            if isPlaylist {
-                // Playlist Mode only applies from the next channel, so start one now.
-                Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(800))
-                    guard let self, self.isPlaylist else { return }
-                    self.send(RemoteKey.channelUp.rawValue)
-                }
-            }
-            return
-        case .fullScreen:
-            // The app's own full screen (the player stretched over the page), not the site's F key.
-            isFullScreen.toggle()
-            overlayRemote = false
-            webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
-            webView?.evaluateJavaScript("window.__retroFull && window.__retroFull(\(isFullScreen));", completionHandler: nil)
-            flash(isFullScreen ? "FULL" : idleLED)
-            return
+            sendKey(key)
         default:
-            break
+            sendKey(key)
         }
-        flash(key.led)
-        send(key.rawValue)
-    }
-
-    /// A tap on the picture shows or hides the floating remote (only shown when the
-    /// app's own remote is hidden: full screen or landscape).
-    func screenTapped() {
-        overlayRemote.toggle()
     }
 
     func tune(to decade: Decade) {
@@ -199,20 +125,54 @@ final class TVController {
         }
     }
 
-    // MARK: Web view events
+    /// A tap on the picture shows or hides the floating remote (only drawn when the
+    /// app's own remote is hidden: full screen or landscape).
+    func screenTapped() {
+        overlayRemote.toggle()
+    }
 
+    private func setFullScreen(_ on: Bool) {
+        isFullScreen = on
+        overlayRemote = false
+        updateScrolling()
+        run("window.__retroFull && window.__retroFull(\(on));")
+        flash(on ? "FULL" : idleLED)
+    }
+
+    private func setPlaylist(_ on: Bool) {
+        isPlaylist = on
+        sendKey(.playlist)
+        run("window.__retroPlaylist && window.__retroPlaylist(\(on));")
+        guard on else { return }
+        // Playlist Mode only applies from the next channel, so start one now.
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard let self, self.isPlaylist else { return }
+            self.sendKey(.channelUp, flashing: false)
+        }
+    }
+
+    /// The page only scrolls in its normal layout; in Focus or full screen, swipes change channels.
+    private func updateScrolling() {
+        webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
+    }
+}
+
+// MARK: - Page
+
+extension TVController {
     func pageStarted() {
         isLoading = true
         hasError = false
         immersiveTask?.cancel()
     }
 
+    /// A new page starts with the site's normal layout and none of its modes on.
     func pageCommitted() {
-        // A new page starts with the site's normal layout.
         isImmersive = false
         isShuffle = false
         isPlaylist = false
-        webView?.scrollView.isScrollEnabled = !isFullScreen
+        updateScrolling()
         nowTitle = ""
         channelLabel = ""
         years = []
@@ -223,8 +183,7 @@ final class TVController {
         isLoading = false
         hasError = false
         if isFullScreen {
-            // A new decade keeps full screen on.
-            webView?.evaluateJavaScript("window.__retroFull && window.__retroFull(true);", completionHandler: nil)
+            run("window.__retroFull && window.__retroFull(true);")
         }
         guard autoImmersive else { return }
         immersiveTask?.cancel()
@@ -233,88 +192,15 @@ final class TVController {
             try? await Task.sleep(for: .milliseconds(1200))
             guard let self, !Task.isCancelled, !self.isImmersive else { return }
             self.quietImmersiveStatus = true
-            self.press(.immersive, haptic: false)
-            self.ledText = self.idleLED
+            self.isImmersive = true
+            self.updateScrolling()
+            self.sendKey(.immersive, flashing: false)
         }
     }
 
     func pageFailed() {
         isLoading = false
         hasError = true
-    }
-
-    /// After the picture changes size (leaving full screen, turning the phone), scroll
-    /// the page back to the top and tell the site its window resized so it re-centers
-    /// the TV. Runs again a moment later, after the resize animation has settled.
-    func relayout() {
-        relayoutTask?.cancel()
-        relayoutTask = Task { [weak self] in
-            for delay in [150, 500, 600] {
-                try? await Task.sleep(for: .milliseconds(delay))
-                guard let self, !Task.isCancelled, let webView = self.webView else { return }
-                webView.scrollView.setContentOffset(.zero, animated: false)
-                webView.evaluateJavaScript(
-                    "window.scrollTo(0, 0); window.dispatchEvent(new Event('resize'));",
-                    completionHandler: nil
-                )
-            }
-        }
-    }
-
-    // MARK: Leaving and returning to the app
-
-    @ObservationIgnored private var isAway = false
-
-    /// Notification Center, Control Center or the app switcher covered the app: iOS
-    /// pauses the video (and the site shows static), so note whether it was playing.
-    func appLeaving() {
-        guard !isAway else { return }
-        isAway = true
-        webView?.evaluateJavaScript("window.__retroResume && window.__retroResume.mark();", completionHandler: nil)
-    }
-
-    /// Back in the app: play the clip again if it was playing.
-    func appReturned() {
-        guard isAway else { return }
-        isAway = false
-        webView?.evaluateJavaScript("window.__retroResume && window.__retroResume.resume();", completionHandler: nil)
-    }
-
-    // MARK: Guide
-
-    func selectYear(_ year: GuideYear) {
-        guard !year.selected else { return }
-        Haptics.thunk()
-        flash(year.name)
-        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.year(\(year.index));", completionHandler: nil)
-    }
-
-    func setCategory(_ code: String, on: Bool) {
-        Haptics.tick()
-        if let index = categories.firstIndex(where: { $0.code == code }) {
-            categories[index].checked = on
-        }
-        let safe = code.filter { $0.isLetter }
-        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.category('\(safe)', \(on));", completionHandler: nil)
-        scheduleFilterApply()
-    }
-
-    func selectAllCategories(_ on: Bool) {
-        Haptics.click()
-        for index in categories.indices { categories[index].checked = on }
-        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.\(on ? "all" : "none")();", completionHandler: nil)
-        if on { scheduleFilterApply() }
-    }
-
-    /// The site applies filter changes on the next channel change, so change channel
-    /// once the switches settle.
-    private func scheduleFilterApply() {
-        applyFilters?.cancel()
-        applyFilters = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(900))
-            guard let self, !Task.isCancelled, self.categories.contains(where: \.checked) else { return }
-            self.send(RemoteKey.channelUp.rawValue)
-        }
     }
 
     /// Messages from the page script (Scripts.pageState).
@@ -328,51 +214,134 @@ final class TVController {
             }
             showBanner(text)
         case "state":
-            let title = body["title"] as? String ?? ""
-            if title != nowTitle { nowTitle = title }
-            let label = body["channel"] as? String ?? ""
-            if label != channelLabel {
-                channelLabel = label
-                if !toastVisible { ledText = idleLED }
-            }
-            let newYears: [GuideYear] = (body["years"] as? [[String: Any]] ?? []).compactMap { item in
-                guard let index = (item["index"] as? NSNumber)?.intValue, let name = item["name"] as? String else { return nil }
-                return GuideYear(index: index, name: name, selected: (item["selected"] as? NSNumber)?.boolValue ?? false)
-            }
-            if newYears != years { years = newYears }
-            let newCategories: [GuideCategory] = (body["categories"] as? [[String: Any]] ?? []).compactMap { item in
-                guard let code = item["code"] as? String, let name = item["name"] as? String else { return nil }
-                return GuideCategory(
-                    code: code,
-                    name: name,
-                    count: (item["count"] as? NSNumber)?.intValue ?? 0,
-                    checked: (item["checked"] as? NSNumber)?.boolValue ?? false
-                )
-            }
-            if newCategories != categories { categories = newCategories }
+            applyState(body)
         default:
             break
         }
     }
 
-    private func showBanner(_ text: String) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { banner = text }
-        bannerReset?.cancel()
-        bannerReset = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(2400))
-            guard let self, !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.3)) { self.banner = nil }
+    private func applyState(_ body: [String: Any]) {
+        let title = body["title"] as? String ?? ""
+        if title != nowTitle { nowTitle = title }
+
+        let label = body["channel"] as? String ?? ""
+        if !label.isEmpty && label != channelLabel {
+            channelLabel = label
+            if !toastVisible { ledText = idleLED }
+        }
+
+        let newYears: [GuideYear] = (body["years"] as? [[String: Any]] ?? []).compactMap { item in
+            guard let index = (item["index"] as? NSNumber)?.intValue, let name = item["name"] as? String else { return nil }
+            return GuideYear(index: index, name: name, selected: (item["selected"] as? NSNumber)?.boolValue ?? false)
+        }
+        if newYears != years { years = newYears }
+
+        let newCategories: [GuideCategory] = (body["categories"] as? [[String: Any]] ?? []).compactMap { item in
+            guard let code = item["code"] as? String, let name = item["name"] as? String else { return nil }
+            return GuideCategory(
+                code: code,
+                name: name,
+                count: (item["count"] as? NSNumber)?.intValue ?? 0,
+                checked: (item["checked"] as? NSNumber)?.boolValue ?? false
+            )
+        }
+        if newCategories != categories { categories = newCategories }
+    }
+}
+
+// MARK: - Guide
+
+extension TVController {
+    func selectYear(_ year: GuideYear) {
+        guard !year.selected else { return }
+        Haptics.thunk()
+        flash(year.name)
+        run("window.__retroGuide && window.__retroGuide.year(\(year.index));")
+    }
+
+    func setCategory(_ code: String, on: Bool) {
+        Haptics.tick()
+        if let index = categories.firstIndex(where: { $0.code == code }) {
+            categories[index].checked = on
+        }
+        let safeCode = code.filter(\.isLetter)
+        run("window.__retroGuide && window.__retroGuide.category('\(safeCode)', \(on));")
+        applyFiltersSoon()
+    }
+
+    func selectAllCategories(_ on: Bool) {
+        Haptics.click()
+        for index in categories.indices { categories[index].checked = on }
+        run("window.__retroGuide && window.__retroGuide.\(on ? "all" : "none")();")
+        if on { applyFiltersSoon() }
+    }
+
+    /// The site applies filter changes on the next channel change, so change channel
+    /// once the switches settle (and only if something is still picked).
+    private func applyFiltersSoon() {
+        filterTask?.cancel()
+        filterTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard let self, !Task.isCancelled, self.categories.contains(where: \.checked) else { return }
+            self.sendKey(.channelUp, flashing: false)
+        }
+    }
+}
+
+// MARK: - Size and app switching
+
+extension TVController {
+    /// After the picture changes size (leaving full screen, turning the phone), scroll
+    /// the page back to the top and tell the site its window resized so it re-centers
+    /// the TV. Repeats as the resize animation settles.
+    func relayout() {
+        relayoutTask?.cancel()
+        relayoutTask = Task { [weak self] in
+            for delay in [150, 500, 600] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard let self, !Task.isCancelled else { return }
+                self.webView?.scrollView.setContentOffset(.zero, animated: false)
+                self.run("window.scrollTo(0, 0); window.dispatchEvent(new Event('resize'));")
+            }
         }
     }
 
-    // MARK: Private
+    /// Notification Center, Control Center or the app switcher covered the app: iOS
+    /// pauses the video (and the site shows static), so note whether it was playing.
+    func appLeaving() {
+        guard !isAway else { return }
+        isAway = true
+        run("window.__retroResume && window.__retroResume.mark();")
+    }
 
-    private func send(_ key: String) {
-        guard let webView else { return }
-        let escaped = key
+    /// Back in the app: play the clip again if it was playing.
+    func appReturned() {
+        guard isAway else { return }
+        isAway = false
+        run("window.__retroResume && window.__retroResume.resume();")
+    }
+}
+
+// MARK: - Helpers
+
+extension TVController {
+    /// What the LED shows when nothing was just pressed.
+    private var idleLED: String {
+        if let number = channelNumber { return "CH \(number)" }
+        return "CH \(decade.id)"
+    }
+
+    private func run(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    /// Presses one of the site's keys (Scripts.keyBridge), showing it on the LED.
+    private func sendKey(_ key: RemoteKey, flashing: Bool = true) {
+        if flashing { flash(key.led) }
+        let escaped = key.rawValue
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
-        webView.evaluateJavaScript("window.__retroKey && window.__retroKey('\(escaped)');", completionHandler: nil)
+        run("window.__retroKey && window.__retroKey('\(escaped)');")
     }
 
     private func flash(_ text: String) {
@@ -386,6 +355,16 @@ final class TVController {
                 self.ledText = self.idleLED
                 self.toastVisible = false
             }
+        }
+    }
+
+    private func showBanner(_ text: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { banner = text }
+        bannerReset?.cancel()
+        bannerReset = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(2400))
+            guard let self, !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) { self.banner = nil }
         }
     }
 }

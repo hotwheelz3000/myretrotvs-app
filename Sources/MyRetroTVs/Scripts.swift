@@ -235,15 +235,16 @@ enum Scripts {
         })();
         """#
 
-    /// Also `window.__retroResume.mark()` / `.resume()`: remembers whether a clip was
-    /// playing when the app was covered (Notification Center), and plays it again on return.
+    /// Watches the YouTube player's progress messages (infoDelivery) for two jobs:
     ///
-    /// Backs up the site's Playlist Mode. The site moves to the next channel when a clip
-    /// ends, but its player loops every clip, and on iPhone a looping clip may never
-    /// report that it ended. While `window.__retroPlaylist(true)` is on, this watches the
-    /// YouTube player's progress messages, and when the same clip jumps from its end back
-    /// to the start (it looped), presses CH up.
-    static let playlistWatch = #"""
+    /// - Playlist Mode backup, `window.__retroPlaylist(true/false)`. The site moves to the
+    ///   next channel when a clip ends, but its player loops every clip, and on iPhone a
+    ///   looping clip may never report that it ended. When the same clip jumps from its
+    ///   end back to the start, this presses CH up.
+    /// - Resume, `window.__retroResume.mark()` / `.resume()`. iOS pauses the video when
+    ///   Notification Center covers the app; this remembers whether a clip was playing
+    ///   and tells the player to play again on return.
+    static let playerWatch = #"""
         (function () {
           if (window.__retroPlaylist) return;
           var on = false, lastId = '', lastTime = 0, duration = 0, cooldown = 0;

@@ -1,1 +1,4 @@
-Playlist mode now works: turning it on starts a fresh channel from the beginning, and the app moves to the next channel when a clip finishes. Playlist, Shuffle and Focus show ON in Effects while they're on.
+- The clip keeps playing after you pull down Notification Center (no more frozen picture and static).
+- The title bar under the TV just shows the title; open the guide with the Guide button or the LED.
+- The LED keeps showing the channel number.
+- Code cleanup, updated tips in About.

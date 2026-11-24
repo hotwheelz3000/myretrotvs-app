@@ -49,7 +49,7 @@ struct RetroWebView: UIViewRepresentable {
             WKUserScript(source: Scripts.pageState, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
         scripts.addUserScript(
-            WKUserScript(source: Scripts.playlistWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            WKUserScript(source: Scripts.playerWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         scripts.add(context.coordinator, name: "retro")
 
