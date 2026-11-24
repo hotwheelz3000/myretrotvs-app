@@ -10,6 +10,7 @@ struct TVScreen: View {
     @State private var hideRemote: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     init(decade: Decade) {
         _controller = State(initialValue: TVController(decade: decade))
@@ -72,6 +73,13 @@ struct TVScreen: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                controller.appReturned()
+            } else {
+                controller.appLeaving()
+            }
         }
         .onChange(of: chromeHidden) {
             controller.overlayRemote = false

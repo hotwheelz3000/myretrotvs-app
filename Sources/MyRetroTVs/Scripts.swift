@@ -235,6 +235,9 @@ enum Scripts {
         })();
         """#
 
+    /// Also `window.__retroResume.mark()` / `.resume()`: remembers whether a clip was
+    /// playing when the app was covered (Notification Center), and plays it again on return.
+    ///
     /// Backs up the site's Playlist Mode. The site moves to the next channel when a clip
     /// ends, but its player loops every clip, and on iPhone a looping clip may never
     /// report that it ended. While `window.__retroPlaylist(true)` is on, this watches the
@@ -244,6 +247,31 @@ enum Scripts {
         (function () {
           if (window.__retroPlaylist) return;
           var on = false, lastId = '', lastTime = 0, duration = 0, cooldown = 0;
+          // Player state for resuming after Notification Center / Control Center:
+          // 1 = playing, 2 = paused (YouTube's numbers).
+          var state = -1, pausedAt = 0, wasPlaying = false;
+          function command(func) {
+            document.querySelectorAll('iframe').forEach(function (frame) {
+              if (!/youtube/.test(frame.src || '')) return;
+              try {
+                frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: [] }), '*');
+              } catch (e) {}
+            });
+          }
+          window.__retroResume = {
+            mark: function () {
+              wasPlaying = state === 1 || (state === 2 && Date.now() - pausedAt < 3000);
+              return wasPlaying;
+            },
+            resume: function () {
+              if (!wasPlaying) return false;
+              wasPlaying = false;
+              [0, 600, 1500, 3000].forEach(function (delay) {
+                setTimeout(function () { if (state !== 1) command('playVideo'); }, delay);
+              });
+              return true;
+            }
+          };
           function videoId(info) {
             if (info && info.videoData && info.videoData.video_id) return info.videoData.video_id;
             return (location.hash || '').replace(/^#/, '');
@@ -260,6 +288,10 @@ enum Scripts {
             if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { return; } }
             if (!data || data.event !== 'infoDelivery' || !data.info) return;
             var info = data.info;
+            if (typeof info.playerState === 'number') {
+              if (info.playerState === 2 && state !== 2) pausedAt = Date.now();
+              state = info.playerState;
+            }
             var id = videoId(info);
             if (id !== lastId) { lastId = id; lastTime = 0; duration = 0; }
             if (typeof info.duration === 'number' && info.duration > 0) duration = info.duration;

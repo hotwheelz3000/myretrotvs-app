@@ -261,6 +261,25 @@ final class TVController {
         }
     }
 
+    // MARK: Leaving and returning to the app
+
+    @ObservationIgnored private var isAway = false
+
+    /// Notification Center, Control Center or the app switcher covered the app: iOS
+    /// pauses the video (and the site shows static), so note whether it was playing.
+    func appLeaving() {
+        guard !isAway else { return }
+        isAway = true
+        webView?.evaluateJavaScript("window.__retroResume && window.__retroResume.mark();", completionHandler: nil)
+    }
+
+    /// Back in the app: play the clip again if it was playing.
+    func appReturned() {
+        guard isAway else { return }
+        isAway = false
+        webView?.evaluateJavaScript("window.__retroResume && window.__retroResume.resume();", completionHandler: nil)
+    }
+
     // MARK: Guide
 
     func selectYear(_ year: GuideYear) {
