@@ -6,7 +6,6 @@ import UIKit
 struct TVScreen: View {
     @State private var controller: TVController
     @State private var showEffects = false
-    @State private var showRemote = false
     @State private var hideRemote: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -16,37 +15,42 @@ struct TVScreen: View {
     }
 
     private var isLandscape: Bool { verticalSizeClass == .compact }
+    /// Landscape or full screen: just the picture, with floating controls.
+    private var chromeHidden: Bool { isLandscape || controller.isFullScreen }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Theme.background.ignoresSafeArea()
+            VolumeViewHost()
+                .frame(width: 1, height: 1)
 
-            // One layout for both orientations, so turning the phone never
-            // reloads the web view: the bars and remote just come and go.
-            VStack(spacing: isLandscape ? 0 : 12) {
-                if !isLandscape {
+            // One layout for every mode, so turning the phone or going full screen
+            // never reloads the web view: the bars and remote just come and go.
+            VStack(spacing: chromeHidden ? 0 : 12) {
+                if !chromeHidden {
                     topBar
                 }
                 picture
-                    .clipShape(RoundedRectangle(cornerRadius: isLandscape ? 0 : 20, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: chromeHidden ? 0 : 20, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: isLandscape ? 0 : 20, style: .continuous)
-                            .strokeBorder(controller.decade.glow.opacity(isLandscape ? 0 : 0.35), lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: chromeHidden ? 0 : 20, style: .continuous)
+                            .strokeBorder(controller.decade.glow.opacity(chromeHidden ? 0 : 0.35), lineWidth: 1.5)
                     )
-                    .shadow(color: controller.decade.glow.opacity(isLandscape ? 0 : 0.3), radius: 24)
-                    .padding(.horizontal, isLandscape ? 0 : 10)
-                if !isLandscape {
+                    .shadow(color: controller.decade.glow.opacity(chromeHidden ? 0 : 0.3), radius: 24)
+                    .padding(.horizontal, chromeHidden ? 0 : 10)
+                if !chromeHidden {
                     RemoteControl(controller: controller) { showEffects = true }
                         .padding(.horizontal, 8)
                         .padding(.bottom, 4)
                 }
             }
-            .ignoresSafeArea(.all, edges: isLandscape ? .all : [])
+            .ignoresSafeArea(.all, edges: chromeHidden ? .all : [])
 
-            if isLandscape {
-                landscapeControls
+            if chromeHidden {
+                floatingControls
             }
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: chromeHidden)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .sheet(isPresented: $showEffects) {
@@ -59,8 +63,11 @@ struct TVScreen: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
-        .onChange(of: isLandscape) {
-            showRemote = false
+        .onChange(of: chromeHidden) {
+            controller.overlayRemote = false
+        }
+        .onChange(of: controller.overlayRemote) {
+            if controller.overlayRemote { scheduleHide() }
         }
     }
 
@@ -95,44 +102,72 @@ struct TVScreen: View {
         .padding(.top, 8)
     }
 
-    // MARK: Landscape
+    // MARK: Full screen and landscape
 
-    /// Small floating buttons over the full-screen picture; the full remote slides in from the right.
-    private var landscapeControls: some View {
+    /// Small floating buttons over the picture. Tapping the picture (or the remote
+    /// button) brings up the full remote: from the right in landscape, from the
+    /// bottom in portrait.
+    private var floatingControls: some View {
         ZStack(alignment: .topLeading) {
-            HStack {
+            HStack(spacing: 10) {
                 CircleIconButton(symbol: "chevron.down", label: "Back to all TVs") {
                     Haptics.click()
                     dismiss()
                 }
                 Spacer()
-                CircleIconButton(symbol: showRemote ? "xmark" : "av.remote", label: "Remote") {
+                if controller.isFullScreen {
+                    CircleIconButton(symbol: "arrow.down.right.and.arrow.up.left", label: "Exit full screen") {
+                        controller.press(.fullScreen)
+                    }
+                }
+                CircleIconButton(symbol: controller.overlayRemote ? "xmark" : "av.remote", label: "Remote") {
                     Haptics.click()
-                    toggleRemote()
+                    controller.overlayRemote.toggle()
                 }
             }
             .padding(14)
-            .opacity(showRemote ? 1 : 0.55)
+            .opacity(controller.overlayRemote ? 1 : 0.5)
 
-            if showRemote {
-                HStack {
-                    Spacer()
-                    RemoteControl(controller: controller, compact: true) { showEffects = true }
-                        .frame(width: 360)
-                        .padding(.trailing, 12)
-                        .padding(.vertical, 8)
-                        .simultaneousGesture(TapGesture().onEnded { scheduleHide() })
-                }
-                .frame(maxHeight: .infinity)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+            if controller.toastVisible && !controller.overlayRemote {
+                LEDDisplay(text: controller.ledText)
+                    .frame(width: 200)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+
+            if controller.overlayRemote {
+                overlayRemote
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showRemote)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: controller.overlayRemote)
     }
 
-    private func toggleRemote() {
-        showRemote.toggle()
-        if showRemote { scheduleHide() }
+    @ViewBuilder
+    private var overlayRemote: some View {
+        let remote = RemoteControl(controller: controller, compact: true) { showEffects = true }
+            .simultaneousGesture(TapGesture().onEnded { scheduleHide() })
+        if isLandscape {
+            HStack {
+                Spacer()
+                remote
+                    .frame(width: 360)
+                    .padding(.trailing, 12)
+                    .padding(.vertical, 8)
+            }
+            .frame(maxHeight: .infinity)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+        } else {
+            VStack {
+                Spacer()
+                remote
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 
     private func scheduleHide() {
@@ -140,7 +175,7 @@ struct TVScreen: View {
         hideRemote = Task {
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled else { return }
-            showRemote = false
+            controller.overlayRemote = false
         }
     }
 

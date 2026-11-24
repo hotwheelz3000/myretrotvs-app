@@ -57,6 +57,12 @@ final class TVController {
     var hasError = false
     /// Whether the site's Immersive Mode (just the TV) is on for the current page.
     private(set) var isImmersive = false
+    /// Whether the site's full-screen video mode is on, which also hides the app's bars.
+    private(set) var isFullScreen = false
+    /// The small floating remote shown over a full-screen picture (tap the screen).
+    var overlayRemote = false
+    /// Briefly true after each press, to show the LED over a full-screen picture.
+    private(set) var toastVisible = false
     private(set) var ledText: String
     /// Bumped on every decade change, so the screen replays its switch-on flash.
     private(set) var tuneCount = 0
@@ -76,12 +82,34 @@ final class TVController {
 
     func press(_ key: RemoteKey, haptic: Bool = true) {
         if haptic { Haptics.click() }
-        if key == .immersive {
+        switch key {
+        case .volumeUp, .volumeDown:
+            // iOS ignores the site's volume control; change the phone's media volume.
+            let level = SystemVolume.shared.step(up: key == .volumeUp)
+            flash(SystemVolume.meter(level))
+            return
+        case .immersive:
             isImmersive.toggle()
-            webView?.scrollView.isScrollEnabled = !isImmersive
+            webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
+        case .fullScreen:
+            // The app's own full screen (the player stretched over the page), not the site's F key.
+            isFullScreen.toggle()
+            overlayRemote = false
+            webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
+            webView?.evaluateJavaScript("window.__retroFull && window.__retroFull(\(isFullScreen));", completionHandler: nil)
+            flash(isFullScreen ? "FULL" : "CH \(decade.id)")
+            return
+        default:
+            break
         }
         flash(key.led)
         send(key.rawValue)
+    }
+
+    /// A tap on the picture shows or hides the floating remote (only shown when the
+    /// app's own remote is hidden: full screen or landscape).
+    func screenTapped() {
+        overlayRemote.toggle()
     }
 
     func tune(to decade: Decade) {
@@ -115,12 +143,16 @@ final class TVController {
     func pageCommitted() {
         // A new page starts with the site's normal layout.
         isImmersive = false
-        webView?.scrollView.isScrollEnabled = true
+        webView?.scrollView.isScrollEnabled = !isFullScreen
     }
 
     func pageFinished() {
         isLoading = false
         hasError = false
+        if isFullScreen {
+            // A new decade keeps full screen on.
+            webView?.evaluateJavaScript("window.__retroFull && window.__retroFull(true);", completionHandler: nil)
+        }
         guard autoImmersive else { return }
         immersiveTask?.cancel()
         immersiveTask = Task { [weak self] in
@@ -149,12 +181,14 @@ final class TVController {
 
     private func flash(_ text: String) {
         ledText = text
+        withAnimation(.easeOut(duration: 0.15)) { toastVisible = true }
         ledReset?.cancel()
         ledReset = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(1400))
             guard let self, !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: 0.25)) {
                 self.ledText = "CH \(self.decade.id)"
+                self.toastVisible = false
             }
         }
     }

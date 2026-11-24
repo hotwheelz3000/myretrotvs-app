@@ -1,1 +1,1 @@
-First build of MyRetroTVs (Unofficial): a home screen with all seven decades, a native remote, swipe gestures, a Picture & Sound panel and a full-screen landscape mode.
+Volume buttons now change the iPhone volume, and a new Full button makes the video fill the screen (tap the picture for the remote).

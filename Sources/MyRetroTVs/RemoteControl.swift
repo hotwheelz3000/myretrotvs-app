@@ -27,7 +27,12 @@ struct RemoteControl: View {
                 }
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        PillButton(symbol: "speaker.wave.2", title: "SFX") { controller.press(.mute) }
+                        PillButton(
+                            symbol: controller.isFullScreen
+                                ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                            title: controller.isFullScreen ? "Exit full" : "Full",
+                            highlighted: controller.isFullScreen
+                        ) { controller.press(.fullScreen) }
                         PillButton(symbol: "play.rectangle", title: "YouTube") { controller.press(.youtube) }
                     }
                     HStack(spacing: 10) {

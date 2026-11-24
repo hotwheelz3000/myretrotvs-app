@@ -21,7 +21,7 @@ struct EffectsSheet: View {
                         tile("Noise level", "tv", detail: "Cycles 5 levels", key: .noise)
                         tile("Screen glow", "sun.max", detail: "On / off", key: .glow)
                         tile("Static between channels", "waveform", detail: "On / off", key: .staticTransition)
-                        tile("Full-screen video", "arrow.up.left.and.arrow.down.right", detail: "On / off", key: .fullScreen)
+                        tile("Full screen", "arrow.up.left.and.arrow.down.right", detail: "Video fills the screen", key: .fullScreen)
                     }
 
                     if controller.decade.id == "70s" {

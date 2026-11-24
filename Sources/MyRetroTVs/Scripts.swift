@@ -93,4 +93,66 @@ enum Scripts {
           }
         })();
         """#
+
+    /// The app's own full screen: stretches the YouTube player to fill the whole page,
+    /// without relying on the site's F key. `window.__retroFull(true/false)`.
+    /// Ancestors of the player lose any transform/filter while it's on, since those
+    /// would trap a fixed-position element inside the TV graphic.
+    static let fullScreen = #"""
+        (function () {
+          if (window.__retroFull) return;
+          var on = false;
+          var style = document.createElement('style');
+          style.textContent = [
+            'html.retro-full, html.retro-full body { background: #000 !important; overflow: hidden !important; }',
+            '[data-retro-anc] { transform: none !important; filter: none !important; perspective: none !important;',
+            '  contain: none !important; will-change: auto !important; }',
+            '[data-retro-player] { position: fixed !important; inset: 0 !important; width: 100vw !important;',
+            '  height: 100vh !important; max-width: none !important; max-height: none !important;',
+            '  margin: 0 !important; z-index: 2147483647 !important; background: #000 !important; }'
+          ].join('\n');
+          function player() {
+            var frames = document.querySelectorAll('iframe');
+            var best = null, bestArea = 0;
+            for (var i = 0; i < frames.length; i++) {
+              var f = frames[i];
+              var src = f.src || '';
+              var r = f.getBoundingClientRect();
+              var area = r.width * r.height;
+              if (/youtube|youtu\.be/.test(src)) area += 1e9;
+              if (area > bestArea) { best = f; bestArea = area; }
+            }
+            return best || document.querySelector('video');
+          }
+          function clear() {
+            document.querySelectorAll('[data-retro-anc]').forEach(function (el) { el.removeAttribute('data-retro-anc'); });
+            document.querySelectorAll('[data-retro-player]').forEach(function (el) { el.removeAttribute('data-retro-player'); });
+          }
+          function apply() {
+            if (!on) return;
+            var p = player();
+            if (!p) return;
+            if (!p.hasAttribute('data-retro-player')) {
+              clear();
+              p.setAttribute('data-retro-player', '');
+              for (var el = p.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+                el.setAttribute('data-retro-anc', '');
+              }
+            }
+          }
+          var pending = false;
+          new MutationObserver(function () {
+            if (!on || pending) return;
+            pending = true;
+            setTimeout(function () { pending = false; apply(); }, 150);
+          }).observe(document.documentElement, { childList: true, subtree: true });
+          window.__retroFull = function (value) {
+            if (!style.parentNode) (document.head || document.documentElement).appendChild(style);
+            on = !!value;
+            document.documentElement.classList.toggle('retro-full', on);
+            if (on) apply(); else clear();
+            return on;
+          };
+        })();
+        """#
 }

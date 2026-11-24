@@ -27,6 +27,9 @@ struct RetroWebView: UIViewRepresentable {
         scripts.addUserScript(
             WKUserScript(source: Scripts.appPolish, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
+        scripts.addUserScript(
+            WKUserScript(source: Scripts.fullScreen, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        )
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -65,6 +68,14 @@ struct RetroWebView: UIViewRepresentable {
                 swipe.delegate = self
                 webView.addGestureRecognizer(swipe)
             }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+            tap.delegate = self
+            tap.cancelsTouchesInView = false
+            webView.addGestureRecognizer(tap)
+        }
+
+        @objc private func tapped() {
+            controller.screenTapped()
         }
 
         @objc private func swiped(_ swipe: UISwipeGestureRecognizer) {
@@ -84,6 +95,8 @@ struct RetroWebView: UIViewRepresentable {
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let swipe = gestureRecognizer as? UISwipeGestureRecognizer else { return true }
+            // In full screen the video fills the page, so up/down always change channels.
+            if controller.isFullScreen { return true }
             // Up/down only change channels when the page itself can't scroll
             // (Immersive Mode); otherwise they scroll the page as usual.
             if swipe.direction == .up || swipe.direction == .down {
