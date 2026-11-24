@@ -44,12 +44,14 @@ enum Scripts {
               cancelable: true,
               view: window
             });
-            if (event.keyCode !== legacy) {
+            // The site reads jQuery's event.which. Safari doesn't always take keyCode/which
+            // from the constructor, so set them on the event itself every time.
+            var props = { keyCode: legacy, which: legacy, charCode: type === 'keypress' ? legacy : 0 };
+            Object.keys(props).forEach(function (name) {
               try {
-                Object.defineProperty(event, 'keyCode', { get: function () { return legacy; } });
-                Object.defineProperty(event, 'which', { get: function () { return legacy; } });
+                Object.defineProperty(event, name, { get: function () { return props[name]; } });
               } catch (e) {}
-            }
+            });
             var target = document.body || document.documentElement || document;
             target.dispatchEvent(event);
           }
@@ -152,6 +154,83 @@ enum Scripts {
             document.documentElement.classList.toggle('retro-full', on);
             if (on) apply(); else clear();
             return on;
+          };
+        })();
+        """#
+
+    /// Reads the TV's state from the page for the app's guide and banners, and lets the
+    /// app pick a year or switch categories with the site's own controls.
+    ///
+    /// Posts to `window.webkit.messageHandlers.retro`:
+    ///   {type: 'state', title, channel, years: [{index, name, selected}],
+    ///    categories: [{code, name, count, checked}]}
+    ///   {type: 'status', text}  (the site's status line: "Tube glow effect is now enabled")
+    /// `window.__retroGuide.year(i)`, `.category(code, on)`, `.all()`, `.none()`.
+    static let pageState = #"""
+        (function () {
+          if (window.__retroGuide) return;
+          function post(message) {
+            try { window.webkit.messageHandlers.retro.postMessage(message); } catch (e) {}
+          }
+          function text(selector) {
+            var el = document.querySelector(selector);
+            return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '';
+          }
+          function state() {
+            var years = Array.prototype.map.call(document.querySelectorAll('#yearbar .year'), function (el) {
+              return { index: Number(el.getAttribute('name')), name: (el.textContent || '').trim(), selected: el.classList.contains('selected') };
+            });
+            var categories = Array.prototype.map.call(document.querySelectorAll('#tvfilters input[type=checkbox], input[id^="box_"]'), function (box) {
+              var label = document.querySelector('label[for="' + box.id + '"]');
+              var raw = label ? (label.textContent || '').trim() : box.id;
+              var match = raw.match(/^(.*?)\s*\((\d+)\)\s*$/);
+              return {
+                code: box.id.replace(/^box_/, ''),
+                name: match ? match[1] : raw,
+                count: match ? Number(match[2]) : 0,
+                checked: !!box.checked
+              };
+            });
+            var seen = {};
+            categories = categories.filter(function (c) { if (seen[c.code]) return false; seen[c.code] = 1; return true; });
+            return { type: 'state', title: text('#lcdbar'), channel: text('#channellabel'), years: years, categories: categories };
+          }
+          var lastState = '', lastStatus = '';
+          function check() {
+            var s = state();
+            var json = JSON.stringify(s);
+            if (json !== lastState) { lastState = json; post(s); }
+            var status = text('#statusbar');
+            if (status && status !== lastStatus) post({ type: 'status', text: status });
+            lastStatus = status;
+          }
+          var pending = false;
+          function schedule() {
+            if (pending) return;
+            pending = true;
+            setTimeout(function () { pending = false; check(); }, 200);
+          }
+          new MutationObserver(schedule).observe(document.documentElement, {
+            childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class']
+          });
+          document.addEventListener('change', schedule, true);
+          setInterval(check, 2000);
+          check();
+          window.__retroGuide = {
+            refresh: function () { lastState = ''; check(); },
+            year: function (index) {
+              var el = document.querySelector('#yearbar .year[name="' + index + '"]');
+              if (el) el.click();
+              else if (window.__retroKey) window.__retroKey(String(index));
+              schedule();
+            },
+            category: function (code, on) {
+              var box = document.getElementById('box_' + code);
+              if (box && box.checked !== on) box.click();
+              schedule();
+            },
+            all: function () { var el = document.getElementById('filter_all'); if (el) el.click(); schedule(); },
+            none: function () { var el = document.getElementById('filter_none'); if (el) el.click(); schedule(); }
           };
         })();
         """#
