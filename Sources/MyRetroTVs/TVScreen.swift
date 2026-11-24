@@ -6,6 +6,7 @@ import UIKit
 struct TVScreen: View {
     @State private var controller: TVController
     @State private var showEffects = false
+    @State private var showGuide = false
     @State private var hideRemote: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -39,9 +40,15 @@ struct TVScreen: View {
                     .shadow(color: controller.decade.glow.opacity(chromeHidden ? 0 : 0.3), radius: 24)
                     .padding(.horizontal, chromeHidden ? 0 : 10)
                 if !chromeHidden {
-                    RemoteControl(controller: controller) { showEffects = true }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
+                    NowPlayingStrip(controller: controller) { showGuide = true }
+                        .padding(.horizontal, 14)
+                    RemoteControl(
+                        controller: controller,
+                        onEffects: { showEffects = true },
+                        onGuide: { showGuide = true }
+                    )
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
                 }
             }
             .ignoresSafeArea(.all, edges: chromeHidden ? .all : [])
@@ -55,6 +62,9 @@ struct TVScreen: View {
         .persistentSystemOverlays(.hidden)
         .sheet(isPresented: $showEffects) {
             EffectsSheet(controller: controller)
+        }
+        .sheet(isPresented: $showGuide) {
+            GuideSheet(controller: controller)
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
@@ -146,8 +156,13 @@ struct TVScreen: View {
 
     @ViewBuilder
     private var overlayRemote: some View {
-        let remote = RemoteControl(controller: controller, compact: true) { showEffects = true }
-            .simultaneousGesture(TapGesture().onEnded { scheduleHide() })
+        let remote = RemoteControl(
+            controller: controller,
+            compact: true,
+            onEffects: { showEffects = true },
+            onGuide: { showGuide = true }
+        )
+        .simultaneousGesture(TapGesture().onEnded { scheduleHide() })
         if isLandscape {
             HStack {
                 Spacer()
@@ -197,6 +212,30 @@ struct TVScreen: View {
             }
             PowerOnFlash()
                 .id(controller.tuneCount)
+
+            if let banner = controller.banner {
+                VStack {
+                    Text(banner)
+                        .font(Theme.label(14, weight: .bold))
+                        .foregroundStyle(Theme.cream)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .environment(\.colorScheme, .dark)
+                        )
+                        .overlay(Capsule(style: .continuous).strokeBorder(Theme.amber.opacity(0.5), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.5), radius: 10)
+                        .padding(.top, chromeHidden ? 64 : 14)
+                        .padding(.horizontal, 20)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .allowsHitTesting(false)
+                .id(banner)
+            }
         }
         .animation(.easeOut(duration: 0.35), value: controller.isLoading)
         .animation(.easeOut(duration: 0.25), value: controller.hasError)

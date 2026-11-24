@@ -6,6 +6,7 @@ struct RemoteControl: View {
     let controller: TVController
     var compact = false
     let onEffects: () -> Void
+    let onGuide: () -> Void
 
     var body: some View {
         VStack(spacing: compact ? 12 : 16) {
@@ -13,7 +14,14 @@ struct RemoteControl: View {
                 RoundRemoteButton(symbol: "power", tint: Theme.red, label: "POWER") {
                     controller.press(.power)
                 }
-                LEDDisplay(text: controller.ledText)
+                Button {
+                    Haptics.click()
+                    onGuide()
+                } label: {
+                    LEDDisplay(text: controller.ledText)
+                }
+                .buttonStyle(PressableStyle(scale: 0.97))
+                .accessibilityLabel("Open guide")
                 RoundRemoteButton(symbol: "line.3.horizontal", tint: Theme.panelHigh, label: "MENU") {
                     controller.press(.menu)
                 }
@@ -33,7 +41,10 @@ struct RemoteControl: View {
                             title: controller.isFullScreen ? "Exit full" : "Full",
                             highlighted: controller.isFullScreen
                         ) { controller.press(.fullScreen) }
-                        PillButton(symbol: "play.rectangle", title: "YouTube") { controller.press(.youtube) }
+                        PillButton(symbol: "list.bullet.rectangle", title: "Guide") {
+                            Haptics.click()
+                            onGuide()
+                        }
                     }
                     HStack(spacing: 10) {
                         PillButton(

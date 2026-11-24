@@ -1,1 +1,1 @@
-Volume buttons now change the iPhone volume, and a new Full button makes the video fill the screen (tap the picture for the remote).
+New Guide (tap Guide or the LED): what's playing now, jump to any year, and pick which channel categories play. The clip title scrolls under the TV, the TV's status messages show as banners, and remote presses are more reliable on iPhone.

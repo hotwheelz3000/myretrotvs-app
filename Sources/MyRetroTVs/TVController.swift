@@ -48,6 +48,23 @@ enum RemoteKey: String {
     }
 }
 
+/// A year on the site's year bar (2000...2009).
+struct GuideYear: Identifiable, Equatable {
+    let index: Int
+    let name: String
+    let selected: Bool
+    var id: Int { index }
+}
+
+/// One of the site's content filters ("Cartoons (4584)").
+struct GuideCategory: Identifiable, Equatable {
+    let code: String
+    let name: String
+    let count: Int
+    var checked: Bool
+    var id: String { code }
+}
+
 /// Owns the web view for the TV screen and everything the native controls do to it.
 @MainActor
 @Observable
@@ -63,6 +80,26 @@ final class TVController {
     var overlayRemote = false
     /// Briefly true after each press, to show the LED over a full-screen picture.
     private(set) var toastVisible = false
+    /// The site's status line ("Tube glow effect is now enabled"), shown as a banner for a moment.
+    private(set) var banner: String?
+
+    // What's on, read from the page.
+    private(set) var nowTitle = ""
+    private(set) var channelLabel = ""
+    private(set) var years: [GuideYear] = []
+    private(set) var categories: [GuideCategory] = []
+
+    /// "MUSIC" from "MUSIC - CH 9946".
+    var nowCategory: String {
+        let parts = channelLabel.components(separatedBy: " - ")
+        return parts.count > 1 ? parts[0].trimmingCharacters(in: .whitespaces) : ""
+    }
+
+    /// "9946" from "MUSIC - CH 9946".
+    var channelNumber: String? {
+        guard let range = channelLabel.range(of: #"CH\s*(\d+)"#, options: .regularExpression) else { return nil }
+        return channelLabel[range].filter(\.isNumber)
+    }
     private(set) var ledText: String
     /// Bumped on every decade change, so the screen replays its switch-on flash.
     private(set) var tuneCount = 0
@@ -70,10 +107,19 @@ final class TVController {
     @ObservationIgnored weak var webView: WKWebView?
     @ObservationIgnored private var ledReset: Task<Void, Never>?
     @ObservationIgnored private var immersiveTask: Task<Void, Never>?
+    @ObservationIgnored private var bannerReset: Task<Void, Never>?
+    @ObservationIgnored private var applyFilters: Task<Void, Never>?
+    @ObservationIgnored private var quietImmersiveStatus = false
 
     init(decade: Decade) {
         self.decade = decade
         self.ledText = "CH \(decade.id)"
+    }
+
+    /// What the LED shows when nothing was just pressed.
+    private var idleLED: String {
+        if let number = channelNumber { return "CH \(number)" }
+        return "CH \(decade.id)"
     }
 
     var autoImmersive: Bool {
@@ -97,7 +143,7 @@ final class TVController {
             overlayRemote = false
             webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
             webView?.evaluateJavaScript("window.__retroFull && window.__retroFull(\(isFullScreen));", completionHandler: nil)
-            flash(isFullScreen ? "FULL" : "CH \(decade.id)")
+            flash(isFullScreen ? "FULL" : idleLED)
             return
         default:
             break
@@ -144,6 +190,10 @@ final class TVController {
         // A new page starts with the site's normal layout.
         isImmersive = false
         webView?.scrollView.isScrollEnabled = !isFullScreen
+        nowTitle = ""
+        channelLabel = ""
+        years = []
+        categories = []
     }
 
     func pageFinished() {
@@ -159,14 +209,100 @@ final class TVController {
             // Give the site a moment to set up the TV before switching modes.
             try? await Task.sleep(for: .milliseconds(1200))
             guard let self, !Task.isCancelled, !self.isImmersive else { return }
+            self.quietImmersiveStatus = true
             self.press(.immersive, haptic: false)
-            self.ledText = "CH \(self.decade.id)"
+            self.ledText = self.idleLED
         }
     }
 
     func pageFailed() {
         isLoading = false
         hasError = true
+    }
+
+    // MARK: Guide
+
+    func selectYear(_ year: GuideYear) {
+        guard !year.selected else { return }
+        Haptics.thunk()
+        flash(year.name)
+        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.year(\(year.index));", completionHandler: nil)
+    }
+
+    func setCategory(_ code: String, on: Bool) {
+        Haptics.tick()
+        if let index = categories.firstIndex(where: { $0.code == code }) {
+            categories[index].checked = on
+        }
+        let safe = code.filter { $0.isLetter }
+        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.category('\(safe)', \(on));", completionHandler: nil)
+        scheduleFilterApply()
+    }
+
+    func selectAllCategories(_ on: Bool) {
+        Haptics.click()
+        for index in categories.indices { categories[index].checked = on }
+        webView?.evaluateJavaScript("window.__retroGuide && window.__retroGuide.\(on ? "all" : "none")();", completionHandler: nil)
+        if on { scheduleFilterApply() }
+    }
+
+    /// The site applies filter changes on the next channel change, so change channel
+    /// once the switches settle.
+    private func scheduleFilterApply() {
+        applyFilters?.cancel()
+        applyFilters = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard let self, !Task.isCancelled, self.categories.contains(where: \.checked) else { return }
+            self.send(RemoteKey.channelUp.rawValue)
+        }
+    }
+
+    /// Messages from the page script (Scripts.pageState).
+    func handlePage(_ body: [String: Any]) {
+        switch body["type"] as? String {
+        case "status":
+            guard let text = body["text"] as? String, !text.isEmpty else { return }
+            if quietImmersiveStatus && text.localizedCaseInsensitiveContains("immersive") {
+                quietImmersiveStatus = false
+                return
+            }
+            showBanner(text)
+        case "state":
+            let title = body["title"] as? String ?? ""
+            if title != nowTitle { nowTitle = title }
+            let label = body["channel"] as? String ?? ""
+            if label != channelLabel {
+                channelLabel = label
+                if !toastVisible { ledText = idleLED }
+            }
+            let newYears: [GuideYear] = (body["years"] as? [[String: Any]] ?? []).compactMap { item in
+                guard let index = (item["index"] as? NSNumber)?.intValue, let name = item["name"] as? String else { return nil }
+                return GuideYear(index: index, name: name, selected: (item["selected"] as? NSNumber)?.boolValue ?? false)
+            }
+            if newYears != years { years = newYears }
+            let newCategories: [GuideCategory] = (body["categories"] as? [[String: Any]] ?? []).compactMap { item in
+                guard let code = item["code"] as? String, let name = item["name"] as? String else { return nil }
+                return GuideCategory(
+                    code: code,
+                    name: name,
+                    count: (item["count"] as? NSNumber)?.intValue ?? 0,
+                    checked: (item["checked"] as? NSNumber)?.boolValue ?? false
+                )
+            }
+            if newCategories != categories { categories = newCategories }
+        default:
+            break
+        }
+    }
+
+    private func showBanner(_ text: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { banner = text }
+        bannerReset?.cancel()
+        bannerReset = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(2400))
+            guard let self, !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) { self.banner = nil }
+        }
     }
 
     // MARK: Private
@@ -187,7 +323,7 @@ final class TVController {
             try? await Task.sleep(for: .milliseconds(1400))
             guard let self, !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.25)) {
-                self.ledText = "CH \(self.decade.id)"
+                self.ledText = self.idleLED
                 self.toastVisible = false
             }
         }

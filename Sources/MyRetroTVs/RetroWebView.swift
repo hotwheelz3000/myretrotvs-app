@@ -30,6 +30,10 @@ struct RetroWebView: UIViewRepresentable {
         scripts.addUserScript(
             WKUserScript(source: Scripts.fullScreen, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
+        scripts.addUserScript(
+            WKUserScript(source: Scripts.pageState, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        )
+        scripts.add(context.coordinator, name: "retro")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -51,7 +55,8 @@ struct RetroWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate,
+        WKScriptMessageHandler {
         let controller: TVController
 
         init(controller: TVController) {
@@ -110,6 +115,16 @@ struct RetroWebView: UIViewRepresentable {
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
             true
+        }
+
+        // MARK: Page messages
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard let body = message.body as? [String: Any] else { return }
+            controller.handlePage(body)
         }
 
         // MARK: Navigation
