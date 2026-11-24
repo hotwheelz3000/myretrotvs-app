@@ -2,6 +2,21 @@ import SwiftUI
 import UIKit
 import WebKit
 
+/// A web view that reports when its size changes (full screen, rotation), so the
+/// page can be re-laid out for the new size.
+final class TVWebView: WKWebView {
+    var onResize: (() -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastSize, bounds.width > 0, bounds.height > 0 else { return }
+        let first = lastSize == .zero
+        lastSize = bounds.size
+        if !first { onResize?() }
+    }
+}
+
 /// The MyRetroTVs page, shown inside the app's TV frame.
 struct RetroWebView: UIViewRepresentable {
     let controller: TVController
@@ -35,7 +50,8 @@ struct RetroWebView: UIViewRepresentable {
         )
         scripts.add(context.coordinator, name: "retro")
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = TVWebView(frame: .zero, configuration: configuration)
+        webView.onResize = { [weak controller] in controller?.relayout() }
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.isOpaque = false

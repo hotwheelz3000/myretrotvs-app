@@ -110,6 +110,7 @@ final class TVController {
     @ObservationIgnored private var bannerReset: Task<Void, Never>?
     @ObservationIgnored private var applyFilters: Task<Void, Never>?
     @ObservationIgnored private var quietImmersiveStatus = false
+    @ObservationIgnored private var relayoutTask: Task<Void, Never>?
 
     init(decade: Decade) {
         self.decade = decade
@@ -218,6 +219,24 @@ final class TVController {
     func pageFailed() {
         isLoading = false
         hasError = true
+    }
+
+    /// After the picture changes size (leaving full screen, turning the phone), scroll
+    /// the page back to the top and tell the site its window resized so it re-centers
+    /// the TV. Runs again a moment later, after the resize animation has settled.
+    func relayout() {
+        relayoutTask?.cancel()
+        relayoutTask = Task { [weak self] in
+            for delay in [150, 500, 600] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard let self, !Task.isCancelled, let webView = self.webView else { return }
+                webView.scrollView.setContentOffset(.zero, animated: false)
+                webView.evaluateJavaScript(
+                    "window.scrollTo(0, 0); window.dispatchEvent(new Event('resize'));",
+                    completionHandler: nil
+                )
+            }
+        }
     }
 
     // MARK: Guide

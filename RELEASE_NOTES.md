@@ -1,1 +1,1 @@
-New Guide (tap Guide or the LED): what's playing now, jump to any year, and pick which channel categories play. The clip title scrolls under the TV, the TV's status messages show as banners, and remote presses are more reliable on iPhone.
+Leaving full screen or turning the phone now puts the TV back in place.
