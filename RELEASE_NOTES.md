@@ -1,1 +1,1 @@
-Leaving full screen or turning the phone now puts the TV back in place.
+The remote's MENU button is now Guide, and a Shuffle button takes the old Guide spot (lit while Shuffle is on).

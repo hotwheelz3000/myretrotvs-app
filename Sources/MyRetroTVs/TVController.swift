@@ -76,6 +76,8 @@ final class TVController {
     private(set) var isImmersive = false
     /// Whether the site's full-screen video mode is on, which also hides the app's bars.
     private(set) var isFullScreen = false
+    /// Whether the site's Shuffle Mode (random years on channel change) is on for this page.
+    private(set) var isShuffle = false
     /// The small floating remote shown over a full-screen picture (tap the screen).
     var overlayRemote = false
     /// Briefly true after each press, to show the LED over a full-screen picture.
@@ -138,6 +140,8 @@ final class TVController {
         case .immersive:
             isImmersive.toggle()
             webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
+        case .shuffle:
+            isShuffle.toggle()
         case .fullScreen:
             // The app's own full screen (the player stretched over the page), not the site's F key.
             isFullScreen.toggle()
@@ -190,6 +194,7 @@ final class TVController {
     func pageCommitted() {
         // A new page starts with the site's normal layout.
         isImmersive = false
+        isShuffle = false
         webView?.scrollView.isScrollEnabled = !isFullScreen
         nowTitle = ""
         channelLabel = ""

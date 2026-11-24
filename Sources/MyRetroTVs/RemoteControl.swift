@@ -22,8 +22,9 @@ struct RemoteControl: View {
                 }
                 .buttonStyle(PressableStyle(scale: 0.97))
                 .accessibilityLabel("Open guide")
-                RoundRemoteButton(symbol: "line.3.horizontal", tint: Theme.panelHigh, label: "MENU") {
-                    controller.press(.menu)
+                RoundRemoteButton(symbol: "list.bullet.rectangle", tint: Theme.panelHigh, label: "Guide") {
+                    Haptics.click()
+                    onGuide()
                 }
             }
 
@@ -41,10 +42,11 @@ struct RemoteControl: View {
                             title: controller.isFullScreen ? "Exit full" : "Full",
                             highlighted: controller.isFullScreen
                         ) { controller.press(.fullScreen) }
-                        PillButton(symbol: "list.bullet.rectangle", title: "Guide") {
-                            Haptics.click()
-                            onGuide()
-                        }
+                        PillButton(
+                            symbol: "shuffle",
+                            title: "Shuffle",
+                            highlighted: controller.isShuffle
+                        ) { controller.press(.shuffle) }
                     }
                     HStack(spacing: 10) {
                         PillButton(

@@ -7,7 +7,7 @@ An unofficial iPhone app for [MyRetroTVs](https://www.myretrotvs.com), the free 
 ## What the app adds
 
 - **Living-room home screen:** seven drawn TV sets, one per decade, plus a "Back to the 80s" card for the last set you watched.
-- **Native remote:** Power, CH and VOL rockers (VOL changes the iPhone volume, since iOS blocks web video volume), Menu, Full, an LED readout, and a decade dial. Every press has a haptic click.
+- **Native remote:** Power, CH and VOL rockers (VOL changes the iPhone volume, since iOS blocks web video volume), Guide, Full, Shuffle, Focus, an LED readout, and a decade dial. Every press has a haptic click.
 - **Full screen:** the Full button stretches the video over the whole screen; tap the picture for a floating remote.
 - **Guide:** what's playing now (title and channel), every year of the decade to jump to, and the site's content categories (Cartoons, Commercials, Music...) as switches. The clip title also scrolls under the TV.
 - **Gestures:** swipe up/down on the TV to change channels (in Focus mode), and left/right to change decades.
