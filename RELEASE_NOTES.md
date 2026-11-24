@@ -1,1 +1,1 @@
-The remote's MENU button is now Guide, and a Shuffle button takes the old Guide spot (lit while Shuffle is on).
+Playlist mode now works: turning it on starts a fresh channel from the beginning, and the app moves to the next channel when a clip finishes. Playlist, Shuffle and Focus show ON in Effects while they're on.

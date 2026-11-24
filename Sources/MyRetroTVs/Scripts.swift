@@ -234,4 +234,48 @@ enum Scripts {
           };
         })();
         """#
+
+    /// Backs up the site's Playlist Mode. The site moves to the next channel when a clip
+    /// ends, but its player loops every clip, and on iPhone a looping clip may never
+    /// report that it ended. While `window.__retroPlaylist(true)` is on, this watches the
+    /// YouTube player's progress messages, and when the same clip jumps from its end back
+    /// to the start (it looped), presses CH up.
+    static let playlistWatch = #"""
+        (function () {
+          if (window.__retroPlaylist) return;
+          var on = false, lastId = '', lastTime = 0, duration = 0, cooldown = 0;
+          function videoId(info) {
+            if (info && info.videoData && info.videoData.video_id) return info.videoData.video_id;
+            return (location.hash || '').replace(/^#/, '');
+          }
+          function advance() {
+            var now = Date.now();
+            if (now < cooldown) return;
+            cooldown = now + 4000;
+            if (window.__retroKey) window.__retroKey('ArrowUp');
+          }
+          window.addEventListener('message', function (event) {
+            if (!/^https:\/\/([a-z0-9-]+\.)*youtube(-nocookie)?\.com$/.test(event.origin || '')) return;
+            var data = event.data;
+            if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { return; } }
+            if (!data || data.event !== 'infoDelivery' || !data.info) return;
+            var info = data.info;
+            var id = videoId(info);
+            if (id !== lastId) { lastId = id; lastTime = 0; duration = 0; }
+            if (typeof info.duration === 'number' && info.duration > 0) duration = info.duration;
+            if (!on) {
+              if (typeof info.currentTime === 'number') lastTime = info.currentTime;
+              return;
+            }
+            if (info.playerState === 0) { setTimeout(function () { if (videoId(null) === id || lastId === id) advance(); }, 2500); }
+            if (typeof info.currentTime === 'number') {
+              var t = info.currentTime;
+              var nearEnd = duration > 0 ? lastTime > duration - 4 : lastTime > 20;
+              if (nearEnd && t < 3 && lastTime - t > 5) advance();
+              lastTime = t;
+            }
+          });
+          window.__retroPlaylist = function (value) { on = !!value; cooldown = Date.now() + 1500; return on; };
+        })();
+        """#
 }

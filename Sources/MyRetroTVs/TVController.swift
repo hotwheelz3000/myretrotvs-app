@@ -78,6 +78,8 @@ final class TVController {
     private(set) var isFullScreen = false
     /// Whether the site's Shuffle Mode (random years on channel change) is on for this page.
     private(set) var isShuffle = false
+    /// Whether the site's Playlist Mode (clips play start to end, then the next channel) is on.
+    private(set) var isPlaylist = false
     /// The small floating remote shown over a full-screen picture (tap the screen).
     var overlayRemote = false
     /// Briefly true after each press, to show the LED over a full-screen picture.
@@ -142,6 +144,20 @@ final class TVController {
             webView?.scrollView.isScrollEnabled = !(isImmersive || isFullScreen)
         case .shuffle:
             isShuffle.toggle()
+        case .playlist:
+            isPlaylist.toggle()
+            flash(key.led)
+            send(key.rawValue)
+            webView?.evaluateJavaScript("window.__retroPlaylist && window.__retroPlaylist(\(isPlaylist));", completionHandler: nil)
+            if isPlaylist {
+                // Playlist Mode only applies from the next channel, so start one now.
+                Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(800))
+                    guard let self, self.isPlaylist else { return }
+                    self.send(RemoteKey.channelUp.rawValue)
+                }
+            }
+            return
         case .fullScreen:
             // The app's own full screen (the player stretched over the page), not the site's F key.
             isFullScreen.toggle()
@@ -195,6 +211,7 @@ final class TVController {
         // A new page starts with the site's normal layout.
         isImmersive = false
         isShuffle = false
+        isPlaylist = false
         webView?.scrollView.isScrollEnabled = !isFullScreen
         nowTitle = ""
         channelLabel = ""

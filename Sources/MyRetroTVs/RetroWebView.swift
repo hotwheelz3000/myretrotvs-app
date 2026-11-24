@@ -48,6 +48,9 @@ struct RetroWebView: UIViewRepresentable {
         scripts.addUserScript(
             WKUserScript(source: Scripts.pageState, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
+        scripts.addUserScript(
+            WKUserScript(source: Scripts.playlistWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        )
         scripts.add(context.coordinator, name: "retro")
 
         let webView = TVWebView(frame: .zero, configuration: configuration)

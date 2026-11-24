@@ -32,10 +32,10 @@ struct EffectsSheet: View {
                     }
 
                     section("Playback") {
-                        tile("Playlist mode", "list.number", detail: "Start clips from the top", key: .playlist)
-                        tile("Shuffle", "shuffle", detail: "Random years", key: .shuffle)
+                        tile("Playlist mode", "list.number", detail: "Clips play start to end, then next channel", key: .playlist, on: controller.isPlaylist)
+                        tile("Shuffle", "shuffle", detail: "Random years", key: .shuffle, on: controller.isShuffle)
                         tile("Sound effects", "speaker.wave.2", detail: "On / off", key: .mute)
-                        tile("Focus on the TV", "rectangle.inset.filled", detail: "Hide the page around it", key: .immersive)
+                        tile("Focus on the TV", "rectangle.inset.filled", detail: "Hide the page around it", key: .immersive, on: controller.isImmersive)
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -102,14 +102,25 @@ struct EffectsSheet: View {
         }
     }
 
-    private func tile(_ title: String, _ symbol: String, detail: String, key: RemoteKey) -> some View {
+    private func tile(_ title: String, _ symbol: String, detail: String, key: RemoteKey, on: Bool = false) -> some View {
         Button {
             controller.press(key)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.amber)
+                HStack {
+                    Image(systemName: symbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.amber)
+                    Spacer()
+                    if on {
+                        Text("ON")
+                            .font(Theme.label(10, weight: .heavy))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Theme.amber))
+                    }
+                }
                 Text(title)
                     .font(Theme.label(14, weight: .bold))
                     .foregroundStyle(Theme.cream)
@@ -126,7 +137,7 @@ struct EffectsSheet: View {
                     .fill(Theme.panelHigh)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Theme.stroke, lineWidth: 1)
+                            .strokeBorder(on ? Theme.amber.opacity(0.7) : Theme.stroke, lineWidth: on ? 1.5 : 1)
                     )
             )
         }
